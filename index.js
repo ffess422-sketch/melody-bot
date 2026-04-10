@@ -191,12 +191,10 @@ bot.on('callback_query', async (query) => {
 bot.onText(/\/progress/, async (msg) => {
   const telegramId = msg.from.id;
 
-  // все карточки системы
   const { data: allCards } = await supabase
     .from('cards')
     .select('id');
 
-  // карточки пользователя
   const { data: userCards } = await supabase
     .from('user_cards')
     .select('card_id')
@@ -205,8 +203,22 @@ bot.onText(/\/progress/, async (msg) => {
   const total = allCards?.length || 0;
   const obtained = userCards?.length || 0;
 
+  const percent = total > 0
+    ? Math.round((obtained / total) * 100)
+    : 0;
+
+  let status = '🌱 Новичок';
+
+  if (percent >= 25) status = '🌊 Исследователь';
+  if (percent >= 50) status = '🏡 Житель Melody River';
+  if (percent >= 75) status = '🧭 Хранитель коллекции';
+  if (percent >= 100) status = '🌟 Мастер тишины';
+
   bot.sendMessage(
     telegramId,
-    `📊 Твой прогресс:\n\n${obtained} / ${total} карточек`
+    `📊 Твой путь в Melody River:\n\n` +
+    `Карточки: ${obtained} / ${total}\n` +
+    `Прогресс: ${percent}%\n\n` +
+    `Статус: ${status}`
   );
 });
