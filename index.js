@@ -40,50 +40,65 @@ if (text === 'Получить карточку') {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // проверка — получал ли сегодня
+  // 1. проверка — уже получал сегодня
   const { data: existing } = await supabase
     .from('user_cards')
-    .select('date_received')
+    .select('id')
     .eq('user_id', telegramId)
     .eq('date_received', today);
 
   if (existing && existing.length > 0) {
-    return bot.sendMessage(telegramId, 'Ты уже получил карточку сегодня');
+    return bot.sendMessage(telegramId, 'Ты уже получил карточку сегодня 🌊');
   }
 
-  // какие карточки уже есть у пользователя
+  // 2. получаем уже полученные карточки
   const { data: userCards } = await supabase
     .from('user_cards')
     .select('card_id')
     .eq('user_id', telegramId);
 
-  const ownedIds = userCards.map(c => c.card_id);
+  const ownedIds = userCards?.map(c => c.card_id) || [];
 
-  // берём только НОВЫЕ карточки
-  let query = supabase.from('cards').select('*');
+  // 3. получаем все активные карточки
+  const { data: cards } = await supabase
+    .from('cards')
+    .select('*')
+    .eq('active', true);
 
-  if (ownedIds.length > 0) {
-    query = query.not('id', 'in', `(${ownedIds.join(',')})`);
+  if (!cards || cards.length === 0) {
+    return bot.sendMessage(telegramId, 'Карточек пока нет');
   }
 
-  const { data: availableCards } = await query;
+  // 4. фильтруем новые
+  const availableCards = cards.filter(c => !ownedIds.includes(c.id));
 
-  // если все карточки получены
-  if (!availableCards || availableCards.length === 0) {
-    return bot.sendMessage(telegramId, 'Ты уже собрал все карточки 🌊');
+  // 5. если всё собрано
+  if (availableCards.length === 0) {
+    return bot.sendMessage(telegramId, 'Ты собрал все карточки 🌊');
   }
 
+  // 6. выбираем случайную
   const card = availableCards[Math.floor(Math.random() * availableCards.length)];
 
+  // 7. сохраняем
   await supabase.from('user_cards').insert({
     user_id: telegramId,
     card_id: card.id,
     date_received: today
   });
 
-  bot.sendPhoto(telegramId, card.image_url, {
+  // 8. отправляем карточку
+  await bot.sendPhoto(telegramId, card.image_url, {
     caption: card.text
   });
+
+  // ===== ШАГ 3 (UX) =====
+  if (availableCards.length <= 5) {
+    await bot.sendMessage(
+      telegramId,
+      '🌊 Ты почти собрал всю коллекцию'
+    );
+  }
 }
 
     // ===== КОЛЛЕКЦИЯ =====
@@ -125,6 +140,7 @@ if (text === 'Получить карточку') {
   // сохраняем карточки в памяти
   userSessions[telegramId] = cards;
 }
+    
     // ===== РЕФЕРАЛКА =====
     if (text === 'Пригласить друга') {
       const link = `https://t.me/${process.env.BOT_USERNAME}?start=ref_${telegramId}`;
@@ -169,5 +185,28 @@ bot.on('callback_query', async (query) => {
         ]]
       }
     }
+  );
+});
+
+bot.onText(/\/progress/, async (msg) => {
+  const telegramId = msg.from.id;
+
+  // все карточки системы
+  const { data: allCards } = await supabase
+    .from('cards')
+    .select('id');
+
+  // карточки пользователя
+  const { data: userCards } = await supabase
+    .from('user_cards')
+    .select('card_id')
+    .eq('user_id', telegramId);
+
+  const total = allCards?.length || 0;
+  const obtained = userCards?.length || 0;
+
+  bot.sendMessage(
+    telegramId,
+    `📊 Твой прогресс:\n\n${obtained} / ${total} карточек`
   );
 });
