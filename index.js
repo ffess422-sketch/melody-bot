@@ -65,35 +65,41 @@ bot.on('message', async (msg) => {
     // ===== КОЛЛЕКЦИЯ =====
     if (text === 'Моя коллекция') {
 
-      const { data: userCards, error } = await supabase
-        .from('user_cards')
-        .select(`
-          card_id,
-          cards (
-            text,
-            image_url
-          )
-        `)
-        .eq('user_id', telegramId);
+  // 1. Получаем записи пользователя
+  const { data: userCards, error } = await supabase
+    .from('user_cards')
+    .select('card_id')
+    .eq('user_id', telegramId);
 
-      if (error) {
-        console.error(error);
-        return bot.sendMessage(telegramId, 'Ошибка загрузки коллекции');
-      }
+  if (error) {
+    console.error(error);
+    return bot.sendMessage(telegramId, 'Ошибка загрузки коллекции (user_cards)');
+  }
 
-      if (!userCards || userCards.length === 0) {
-        return bot.sendMessage(telegramId, 'У тебя пока нет карточек');
-      }
+  if (!userCards || userCards.length === 0) {
+    return bot.sendMessage(telegramId, 'У тебя пока нет карточек');
+  }
 
-      for (const uc of userCards) {
-        if (!uc.cards) continue;
+  // 2. Получаем сами карточки
+  const cardIds = userCards.map(uc => uc.card_id);
 
-        await bot.sendPhoto(telegramId, uc.cards.image_url, {
-          caption: uc.cards.text
-        });
-      }
-    }
+  const { data: cards, error: cardsError } = await supabase
+    .from('cards')
+    .select('*')
+    .in('id', cardIds);
 
+  if (cardsError) {
+    console.error(cardsError);
+    return bot.sendMessage(telegramId, 'Ошибка загрузки карточек');
+  }
+
+  // 3. Показываем карточки
+  for (const card of cards) {
+    await bot.sendPhoto(telegramId, card.image_url, {
+      caption: card.text
+    });
+  }
+}
     // ===== РЕФЕРАЛКА =====
     if (text === 'Пригласить друга') {
       const link = `https://t.me/${process.env.BOT_USERNAME}?start=ref_${telegramId}`;
