@@ -18,7 +18,8 @@ bot.onText(/\/start/, async (msg) => {
       keyboard: [
         ['Получить карточку'],
         ['Моя коллекция'],
-        ['Пригласить друга']
+        ['Пригласить друга'],
+        ['Прогресс']
       ],
       resize_keyboard: true
     }
@@ -188,8 +189,11 @@ bot.on('callback_query', async (query) => {
   );
 });
 
-bot.onText(/\/progress/, async (msg) => {
+bot.on('message', async (msg) => {
   const telegramId = msg.from.id;
+  const text = msg.text;
+
+  if (text !== 'Прогресс') return;
 
   const { data: allCards } = await supabase
     .from('cards')
@@ -214,7 +218,7 @@ bot.onText(/\/progress/, async (msg) => {
   if (percent >= 75) status = '🧭 Хранитель коллекции';
   if (percent >= 100) status = '🌟 Мастер тишины';
 
-  bot.sendMessage(
+  return bot.sendMessage(
     telegramId,
     `📊 Твой путь в Melody River:\n\n` +
     `Карточки: ${obtained} / ${total}\n` +
