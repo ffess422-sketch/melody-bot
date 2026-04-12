@@ -36,19 +36,39 @@ async function getOrCreateUser(telegramId) {
 bot.onText(/\/start/, async (msg) => {
   const telegramId = msg.from.id;
 
-  await getOrCreateUser(telegramId);
+  async function getOrCreateUser(telegramId) {
+    if (!user) {
+  return bot.sendMessage(telegramId, 'Ошибка пользователя. Попробуй /start');
+}
+  // ищем пользователя
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_id', telegramId);
 
-  bot.sendMessage(telegramId, 'Добро пожаловать 🌊', {
-    reply_markup: {
-      keyboard: [
-        ['Получить карточку'],
-        ['Моя коллекция', 'Прогресс'],
-        ['Карточка за подписку', 'Пригласить друга']
-      ],
-      resize_keyboard: true
-    }
-  });
-});
+  if (error) {
+    console.error('Ошибка поиска user:', error);
+    return null;
+  }
+
+  // если найден
+  if (users && users.length > 0) {
+    return users[0];
+  }
+
+  // если нет — создаём
+  const { data: newUsers, error: insertError } = await supabase
+    .from('users')
+    .insert({ telegram_id: telegramId })
+    .select();
+
+  if (insertError) {
+    console.error('Ошибка создания user:', insertError);
+    return null;
+  }
+
+  return newUsers[0];
+}
 
 // ===== ОСНОВНАЯ ЛОГИКА =====
 bot.on('message', async (msg) => {
