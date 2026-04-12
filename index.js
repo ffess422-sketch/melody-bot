@@ -11,24 +11,22 @@ const supabase = createClient(
 const userSessions = {};
 const CHANNEL_USERNAME = 'melodyriverchannel';
 
-// ===== ФУНКЦИЯ: получить или создать пользователя =====
+// ===== СОЗДАНИЕ / ПОЛУЧЕНИЕ ПОЛЬЗОВАТЕЛЯ =====
 async function getOrCreateUser(telegramId) {
-  let { data: user } = await supabase
+  let { data: user, error } = await supabase
     .from('users')
     .select('*')
     .eq('telegram_id', telegramId)
-    .single();
+    .maybeSingle();
 
   if (!user) {
     const { data: newUser } = await supabase
       .from('users')
-      .insert({
-        telegram_id: telegramId
-      })
+      .insert({ telegram_id: telegramId })
       .select()
       .single();
 
-    user = newUser;
+    return newUser;
   }
 
   return user;
@@ -54,212 +52,193 @@ bot.onText(/\/start/, async (msg) => {
 
 // ===== ОСНОВНАЯ ЛОГИКА =====
 bot.on('message', async (msg) => {
+  const telegramId = msg.from.id;
+  const text = msg.text;
+
+  if (!text) return;
+
+  console.log('НАЖАТО:', text);
+
+  let user;
+
   try {
-    const telegramId = msg.from.id;
-    const text = msg.text;
+    user = await getOrCreateUser(telegramId);
+  } catch (err) {
+    console.error('Ошибка пользователя:', err);
+    return;
+  }
 
-    if (!text) return;
+  try {
 
-    const user = await getOrCreateUser(telegramId);
+    switch (text) {
 
-    // ===== ПОЛУЧИТЬ КАРТОЧКУ =====
-    if (text === 'Получить карточку') {
+      // ===== КАРТОЧКА =====
+      case 'Получить карточку': {
+        const today = new Date().toISOString().slice(0, 10);
 
-      const today = new Date().toISOString().slice(0, 10);
+        const { data: existing } = await supabase
+          .from('user_cards')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('date_received', today);
 
-      // уже получал сегодня
-      const { data: existing } = await supabase
-        .from('user_cards')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('date_received', today);
-
-      if (existing && existing.length > 0) {
-        return bot.sendMessage(telegramId, 'Ты уже получил карточку сегодня 🌊');
-      }
-
-      // полученные карточки
-      const { data: userCards } = await supabase
-        .from('user_cards')
-        .select('card_id')
-        .eq('user_id', user.id);
-
-      const ownedIds = userCards?.map(c => c.card_id) || [];
-
-      // все карточки
-      const { data: cards } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('active', true);
-
-      if (!cards || cards.length === 0) {
-        return bot.sendMessage(telegramId, 'Карточек пока нет');
-      }
-
-      // новые карточки
-      const availableCards = cards.filter(c => !ownedIds.includes(c.id));
-
-      if (availableCards.length === 0) {
-        return bot.sendMessage(telegramId, 'Ты уже собрал все карточки 🌊');
-      }
-
-      const card = availableCards[Math.floor(Math.random() * availableCards.length)];
-
-      // сохраняем
-      await supabase.from('user_cards').insert({
-        user_id: user.id,
-        card_id: card.id,
-        date_received: today
-      });
-
-      // ===== СЕРИЯ =====
-      let streak = 1;
-
-      if (user.last_card_date) {
-        const diff = Math.floor(
-          (new Date(today) - new Date(user.last_card_date)) / (1000 * 60 * 60 * 24)
-        );
-
-        streak = diff === 1 ? (user.consecutive_days || 0) + 1 : 1;
-      }
-
-      await supabase
-        .from('users')
-        .update({
-          last_card_date: today,
-          consecutive_days: streak
-        })
-        .eq('id', user.id);
-
-      await bot.sendPhoto(telegramId, card.image_url, {
-        caption: `${card.text}\n\n🔥 Серия: ${streak}`
-      });
-
-      if (availableCards.length <= 5) {
-        await bot.sendMessage(telegramId, '🌊 Ты почти собрал всю коллекцию');
-      }
-    }
-
-    // ===== КОЛЛЕКЦИЯ =====
-    if (text === 'Моя коллекция') {
-
-      const { data: userCards } = await supabase
-        .from('user_cards')
-        .select('card_id')
-        .eq('user_id', user.id);
-
-      if (!userCards || userCards.length === 0) {
-        return bot.sendMessage(telegramId, 'У тебя пока нет карточек');
-      }
-
-      const cardIds = userCards.map(c => c.card_id);
-
-      const { data: cards } = await supabase
-        .from('cards')
-        .select('*')
-        .in('id', cardIds);
-
-      const card = cards[0];
-
-      bot.sendPhoto(telegramId, card.image_url, {
-        caption: card.text,
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '⬅️', callback_data: `prev_0` },
-            { text: '➡️', callback_data: `next_0` }
-          ]]
+        if (existing?.length > 0) {
+          return bot.sendMessage(telegramId, 'Ты уже получил карточку сегодня 🌊');
         }
-      });
 
-      userSessions[telegramId] = cards;
-    }
+        const { data: userCards } = await supabase
+          .from('user_cards')
+          .select('card_id')
+          .eq('user_id', user.id);
 
-    // ===== ПРОГРЕСС =====
-    if (text === 'Прогресс') {
+        const ownedIds = userCards?.map(c => c.card_id) || [];
 
-      const { data: allCards } = await supabase
-        .from('cards')
-        .select('id');
+        const { data: cards } = await supabase
+          .from('cards')
+          .select('*')
+          .eq('active', true);
 
-      const { data: userCards } = await supabase
-        .from('user_cards')
-        .select('card_id')
-        .eq('user_id', user.id);
+        if (!cards || cards.length === 0) {
+          return bot.sendMessage(telegramId, 'Карточек пока нет');
+        }
 
-      const total = allCards?.length || 0;
-      const obtained = userCards?.length || 0;
+        const availableCards = cards.filter(c => !ownedIds.includes(c.id));
 
-      const percent = total > 0
-        ? Math.round((obtained / total) * 100)
-        : 0;
+        if (availableCards.length === 0) {
+          return bot.sendMessage(telegramId, 'Ты уже собрал все карточки 🌊');
+        }
 
-      return bot.sendMessage(
-        telegramId,
-        `📊 Прогресс:\n${obtained}/${total}\n${percent}%`
-      );
-    }
+        const card = availableCards[Math.floor(Math.random() * availableCards.length)];
 
-    // ===== ПОДПИСКА =====
-    if (text === 'Карточка за подписку') {
+        await supabase.from('user_cards').insert({
+          user_id: user.id,
+          card_id: card.id,
+          date_received: today
+        });
 
-      if (user.subscription_card_received) {
-        return bot.sendMessage(telegramId, 'Ты уже получил эту карточку');
+        await bot.sendPhoto(telegramId, card.image_url, {
+          caption: card.text
+        });
+
+        break;
       }
 
-      try {
-        const member = await bot.getChatMember(`@${CHANNEL_USERNAME}`, telegramId);
+      // ===== КОЛЛЕКЦИЯ =====
+      case 'Моя коллекция': {
+        const { data: userCards } = await supabase
+          .from('user_cards')
+          .select('card_id')
+          .eq('user_id', user.id);
 
-        if (['member', 'administrator', 'creator'].includes(member.status)) {
+        if (!userCards || userCards.length === 0) {
+          return bot.sendMessage(telegramId, 'У тебя пока нет карточек');
+        }
 
-          const { data: cards } = await supabase
-            .from('cards')
-            .select('*')
-            .eq('special_type', 'subscription');
+        const cardIds = userCards.map(c => c.card_id);
 
-          if (!cards || cards.length === 0) {
-            return bot.sendMessage(telegramId, 'Карточка не найдена');
+        const { data: cards } = await supabase
+          .from('cards')
+          .select('*')
+          .in('id', cardIds);
+
+        const card = cards[0];
+
+        userSessions[telegramId] = cards;
+
+        return bot.sendPhoto(telegramId, card.image_url, {
+          caption: card.text,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '⬅️', callback_data: 'prev_0' },
+              { text: '➡️', callback_data: 'next_0' }
+            ]]
+          }
+        });
+      }
+
+      // ===== ПРОГРЕСС =====
+      case 'Прогресс': {
+        const { data: allCards } = await supabase
+          .from('cards')
+          .select('id');
+
+        const { data: userCards } = await supabase
+          .from('user_cards')
+          .select('card_id')
+          .eq('user_id', user.id);
+
+        const total = allCards?.length || 0;
+        const obtained = userCards?.length || 0;
+
+        const percent = total ? Math.round((obtained / total) * 100) : 0;
+
+        return bot.sendMessage(
+          telegramId,
+          `📊 Прогресс:\n${obtained}/${total}\n${percent}%`
+        );
+      }
+
+      // ===== ПОДПИСКА =====
+      case 'Карточка за подписку': {
+        if (user.subscription_card_received) {
+          return bot.sendMessage(telegramId, 'Ты уже получил эту карточку');
+        }
+
+        try {
+          const member = await bot.getChatMember(`@${CHANNEL_USERNAME}`, telegramId);
+
+          if (!['member', 'administrator', 'creator'].includes(member.status)) {
+            return bot.sendMessage(
+              telegramId,
+              `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
+            );
           }
 
-          const card = cards[0];
-
-          await supabase.from('user_cards').insert({
-            user_id: user.id,
-            card_id: card.id,
-            date_received: new Date().toISOString().slice(0, 10)
-          });
-
-          await supabase
-            .from('users')
-            .update({ subscription_card_received: true })
-            .eq('id', user.id);
-
-          return bot.sendPhoto(telegramId, card.image_url, {
-            caption: card.text
-          });
-
-        } else {
+        } catch {
           return bot.sendMessage(
             telegramId,
             `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
           );
         }
 
-      } catch {
-        return bot.sendMessage(
-          telegramId,
-          `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
-        );
-      }
-    }
+        const { data: cards } = await supabase
+          .from('cards')
+          .select('*')
+          .eq('special_type', 'subscription');
 
-    // ===== РЕФЕРАЛКА =====
-    if (text === 'Пригласить друга') {
-      const link = `https://t.me/${process.env.BOT_USERNAME}?start=ref_${telegramId}`;
-      return bot.sendMessage(telegramId, link);
+        if (!cards || cards.length === 0) {
+          return bot.sendMessage(telegramId, 'Карточка не найдена');
+        }
+
+        const card = cards[0];
+
+        await supabase.from('user_cards').insert({
+          user_id: user.id,
+          card_id: card.id,
+          date_received: new Date().toISOString().slice(0, 10)
+        });
+
+        await supabase
+          .from('users')
+          .update({ subscription_card_received: true })
+          .eq('id', user.id);
+
+        return bot.sendPhoto(telegramId, card.image_url, {
+          caption: card.text
+        });
+      }
+
+      // ===== РЕФЕРАЛКА =====
+      case 'Пригласить друга': {
+        const link = `https://t.me/${process.env.BOT_USERNAME}?start=ref_${telegramId}`;
+        return bot.sendMessage(telegramId, link);
+      }
+
     }
 
   } catch (err) {
-    console.error('ОШИБКА:', err);
+    console.error('ОШИБКА В ЛОГИКЕ:', err);
+    bot.sendMessage(telegramId, 'Ошибка. Посмотри логи.');
   }
 });
 
@@ -273,11 +252,11 @@ bot.on('callback_query', async (query) => {
 
   let index = Number(data.split('_')[1]);
 
-  if (data.startsWith('next')) {
-    index = (index + 1) % cards.length;
-  } else {
-    index = (index - 1 + cards.length) % cards.length;
-  }
+  if (data.startsWith('next')) index++;
+  else index--;
+
+  if (index < 0) index = cards.length - 1;
+  if (index >= cards.length) index = 0;
 
   const card = cards[index];
 
