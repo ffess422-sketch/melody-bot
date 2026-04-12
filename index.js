@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 const userSessions = {};
-const CHANNEL_USERNAME = 'melodyriver_channel'; // ← ЗАМЕНИ НА СВОЙ КАНАЛ
+const CHANNEL_USERNAME = 'melodyriverchannel';
 
 // ===== START =====
 bot.onText(/\/start/, async (msg) => {
@@ -21,7 +21,7 @@ bot.onText(/\/start/, async (msg) => {
         ['Получить карточку'],
         ['Моя коллекция'],
         ['Прогресс'],
-        ['🎁 Получить доступ'],
+        ['Карточка за подписку'],
         ['Пригласить друга']
       ],
       resize_keyboard: true
@@ -222,9 +222,9 @@ bot.on('message', async (msg) => {
       let status = '🌱 Новичок';
 
       if (percent >= 25) status = '🌊 Исследователь';
-      if (percent >= 50) status = '🏡 Житель Melody River';
+      if (percent >= 50) status = '🏡 Искатель чуда';
       if (percent >= 75) status = '🧭 Хранитель коллекции';
-      if (percent >= 100) status = '🌟 Мастер тишины';
+      if (percent >= 100) status = '🏡 Житель Melody River';
 
       return bot.sendMessage(
         telegramId,
@@ -236,7 +236,7 @@ bot.on('message', async (msg) => {
     }
 
     // ===== ПОДПИСКА =====
-    if (text === '🎁 Получить доступ') {
+    if (text === 'Карточка за подписку') {
 
       const { data: user } = await supabase
         .from('users')
@@ -287,7 +287,7 @@ bot.on('message', async (msg) => {
         } else {
           return bot.sendMessage(
             telegramId,
-            `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
+            `Подпишись:\nhttps://t.me/${melodyriverchannel}`
           );
         }
 
@@ -295,7 +295,7 @@ bot.on('message', async (msg) => {
         console.error(err);
         return bot.sendMessage(
           telegramId,
-          `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
+          `Подпишись:\nhttps://t.me/${melodyriverchannel}`
         );
       }
     }
