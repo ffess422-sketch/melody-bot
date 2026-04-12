@@ -19,10 +19,8 @@ bot.onText(/\/start/, async (msg) => {
     reply_markup: {
       keyboard: [
         ['Получить карточку'],
-        ['Моя коллекция'],
-        ['Прогресс'],
-        ['Карточка за подписку'],
-        ['Пригласить друга']
+        ['Моя коллекция', 'Прогресс'],
+        ['Карточка за подписку', 'Пригласить друга']
       ],
       resize_keyboard: true
     }
@@ -42,7 +40,7 @@ bot.on('message', async (msg) => {
 
       const today = new Date().toISOString().slice(0, 10);
 
-      // получаем пользователя
+      // пользователь
       const { data: userData } = await supabase
         .from('users')
         .select('*')
@@ -67,7 +65,7 @@ bot.on('message', async (msg) => {
         }
       }
 
-      // уже получал сегодня?
+      // уже получал сегодня
       const { data: existing } = await supabase
         .from('user_cards')
         .select('id')
@@ -96,7 +94,7 @@ bot.on('message', async (msg) => {
         return bot.sendMessage(telegramId, 'Карточек пока нет');
       }
 
-      // фильтр новых
+      // только новые
       const availableCards = cards.filter(c => !ownedIds.includes(c.id));
 
       if (availableCards.length === 0) {
@@ -222,9 +220,9 @@ bot.on('message', async (msg) => {
       let status = '🌱 Новичок';
 
       if (percent >= 25) status = '🌊 Исследователь';
-      if (percent >= 50) status = '🏡 Искатель чуда';
+      if (percent >= 50) status = '🏡 Житель Melody River';
       if (percent >= 75) status = '🧭 Хранитель коллекции';
-      if (percent >= 100) status = '🏡 Житель Melody River';
+      if (percent >= 100) status = '🌟 Мастер тишины';
 
       return bot.sendMessage(
         telegramId,
@@ -287,7 +285,7 @@ bot.on('message', async (msg) => {
         } else {
           return bot.sendMessage(
             telegramId,
-            `Подпишись:\nhttps://t.me/${melodyriverchannel}`
+            `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
           );
         }
 
@@ -295,7 +293,7 @@ bot.on('message', async (msg) => {
         console.error(err);
         return bot.sendMessage(
           telegramId,
-          `Подпишись:\nhttps://t.me/${melodyriverchannel}`
+          `Подпишись:\nhttps://t.me/${CHANNEL_USERNAME}`
         );
       }
     }
