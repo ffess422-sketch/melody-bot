@@ -8,6 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
+const CHANNEL_USERNAME = 'melodyriverchannel';
 const userSessions = {};
 
 // ===== START =====
@@ -16,11 +17,13 @@ bot.onText(/\/start/, async (msg) => {
 
   bot.sendMessage(telegramId, 'Добро пожаловать 🌊', {
     reply_markup: {
-      keyboard: [
-        ['Получить карточку'],
-        ['Моя коллекция'],
-        ['Прогресс'],
-        ['Пригласить друга']
+        keyboard: [
+  ['Получить карточку'],
+  ['Моя коллекция'],
+  ['Прогресс'],
+  ['Карточка за подписку'],
+  ['Пригласить друга']
+],
       ],
       resize_keyboard: true
     }
@@ -231,6 +234,78 @@ bot.on('message', async (msg) => {
         `Статус: ${status}`
       );
     }
+
+    if (text === 'Карточка за подписку') {
+
+  // проверяем пользователя
+  const { data: user } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_id', telegramId)
+    .single();
+
+  if (!user) {
+    return bot.sendMessage(telegramId, 'Ошибка пользователя');
+  }
+
+  // уже получал?
+  if (user.subscription_card_received) {
+    return bot.sendMessage(telegramId, 'Ты уже получил эту карточку 🌊');
+  }
+
+  // проверка подписки
+  try {
+    const member = await bot.getChatMember(`@${CHANNEL_USERNAME}`, telegramId);
+
+    if (member.status === 'member' || member.status === 'administrator' || member.status === 'creator') {
+
+      // берём спец карточку
+      const { data: cards } = await supabase
+        .from('cards')
+        .select('*')
+        .eq('special_type', 'subscription')
+        .eq('active', true);
+
+      if (!cards || cards.length === 0) {
+        return bot.sendMessage(telegramId, 'Карточка пока не добавлена');
+      }
+
+      const card = cards[0];
+
+      // сохраняем
+      await supabase.from('user_cards').insert({
+        user_id: telegramId,
+        card_id: card.id,
+        date_received: new Date().toISOString().slice(0, 10)
+      });
+
+      // помечаем
+      await supabase
+        .from('users')
+        .update({ subscription_card_received: true })
+        .eq('telegram_id', telegramId);
+
+      await bot.sendMessage(telegramId, '🌊 Ты открыл доступ к философии Melody River');
+
+      await bot.sendPhoto(telegramId, card.image_url, {
+        caption: card.text
+      });
+
+    } else {
+      return bot.sendMessage(
+        telegramId,
+        `Подпишись на канал и попробуй снова:\nhttps://t.me/${CHANNEL_USERNAME}`
+      );
+    }
+
+  } catch (err) {
+    console.error(err);
+    return bot.sendMessage(
+      telegramId,
+      `Подпишись на канал и попробуй снова:\nhttps://t.me/${CHANNEL_USERNAME}`
+    );
+  }
+}
 
     // ===== РЕФЕРАЛКА =====
     if (text === 'Пригласить друга') {
