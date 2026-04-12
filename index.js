@@ -41,6 +41,56 @@ if (text === 'Получить карточку') {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const { data: userData } = await supabase
+  .from('users')
+  .select('last_card_date, consecutive_days')
+  .eq('telegram_id', telegramId)
+  .single();
+
+let streak = 1;
+
+if (userData?.last_card_date) {
+  const last = new Date(userData.last_card_date);
+  const now = new Date(today);
+
+  const diff = Math.floor((now - last) / (1000 * 60 * 60 * 24));
+
+  if (diff === 1) {
+    streak = (userData.consecutive_days || 0) + 1;
+  } else if (diff === 0) {
+    streak = userData.consecutive_days || 1;
+  } else {
+    streak = 1;
+  }
+  if (streak === 5 || streak === 10 || streak === 15) {
+
+  const { data: bonusCards } = await supabase
+    .from('cards')
+    .select('*')
+    .eq('special_type', 'streak')
+    .eq('active', true);
+
+  if (bonusCards && bonusCards.length > 0) {
+
+    const bonus = bonusCards[Math.floor(Math.random() * bonusCards.length)];
+
+    await supabase.from('user_cards').insert({
+      user_id: telegramId,
+      card_id: bonus.id,
+      date_received: today
+    });
+
+    await bot.sendMessage(
+      telegramId,
+      `🏆 Серия ${streak} дней — ты держишь ритм`
+    );
+
+    await bot.sendPhoto(telegramId, bonus.image_url, {
+      caption: bonus.text
+    });
+  }
+}
+}
   // 1. проверка — уже получал сегодня
   const { data: existing } = await supabase
     .from('user_cards')
@@ -83,14 +133,17 @@ if (text === 'Получить карточку') {
 
   // 7. сохраняем
   await supabase.from('user_cards').insert({
-    user_id: telegramId,
-    card_id: card.id,
-    date_received: today
-  });
+   await supabase
+  .from('users')
+  .update({
+    last_card_date: today,
+    consecutive_days: streak
+  })
+  .eq('telegram_id', telegramId);
 
   // 8. отправляем карточку
   await bot.sendPhoto(telegramId, card.image_url, {
-    caption: card.text
+    caption: `${card.text}\n\n🔥 Серия: ${streak} дней`
   });
 
   // ===== ШАГ 3 (UX) =====
